@@ -19,7 +19,7 @@ const formSchema = baseTaskSchema.extend({
   kpi_metrics_tags: z.array(z.string()).default([]),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.input<typeof formSchema>;
 
 const steps = [
   {
@@ -119,12 +119,10 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
     try {
       setIsSaving(true);
       setSubmitError(null);
-      const {
-        dependency_task_ids,
-        tools_systems_tags,
-        kpi_metrics_tags,
-        ...taskPayload
-      } = values;
+      const dependency_task_ids = values.dependency_task_ids ?? [];
+      const tools_systems_tags = values.tools_systems_tags ?? [];
+      const kpi_metrics_tags = values.kpi_metrics_tags ?? [];
+      const { dependency_task_ids: _ignoredDependencyIds, tools_systems_tags: _ignoredToolsTags, kpi_metrics_tags: _ignoredKpiTags, ...taskPayload } = values;
 
       const response = await fetch('/api/tasks', {
         method: 'POST',
@@ -305,7 +303,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 render={({ field }) => (
                   <select
                     multiple
-                    value={field.value.map(String)}
+                    value={(field.value ?? []).map(String)}
                     onChange={(event) => {
                       const selected = Array.from(event.target.selectedOptions).map((option) => Number(option.value));
                       field.onChange(selected);
@@ -341,7 +339,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 name="tools_systems_tags"
                 render={({ field }) => (
                   <input
-                    value={field.value.join(', ')}
+                    value={(field.value ?? []).join(', ')}
                     onChange={(event) => field.onChange(parseTags(event.target.value))}
                     placeholder="例: Slack, Notion"
                     className={clsx(baseInputClasses, 'mt-2')}
@@ -460,7 +458,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 name="kpi_metrics_tags"
                 render={({ field }) => (
                   <input
-                    value={field.value.join(', ')}
+                    value={(field.value ?? []).join(', ')}
                     onChange={(event) => field.onChange(parseTags(event.target.value))}
                     placeholder="例: 処理件数, 応答時間"
                     className={clsx(baseInputClasses, 'mt-2')}
