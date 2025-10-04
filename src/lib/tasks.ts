@@ -1,5 +1,6 @@
 import { execute, executeAndReturnId, queryAll, queryGet, withTransaction, QueryParam } from './db';
 import { DashboardSummary, QuickMemo, Task, TaskDependency, TaskFilters } from '@/types/task';
+import type { TaskInput } from '@/utils/validation';
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   const conditions: string[] = [];
@@ -44,7 +45,12 @@ export async function getTask(id: number): Promise<Task | undefined> {
   return queryGet<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
 }
 
-export async function createTask(data: Partial<Task>): Promise<number> {
+export async function createTask(data: TaskInput): Promise<number> {
+  const toQueryParam = (value: string | number | boolean | null | undefined): QueryParam => {
+    if (value === undefined) return null;
+    return value as QueryParam;
+  };
+
   const id = await executeAndReturnId(
     `INSERT INTO tasks (
       task_name, task_goal, automation_level, tobe_owner, input_info, output_info,
@@ -55,28 +61,32 @@ export async function createTask(data: Partial<Task>): Promise<number> {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `,
     [
-      data.task_name,
-      data.task_goal,
-      data.automation_level,
-      data.tobe_owner,
-      data.input_info,
-      data.output_info,
-      data.data_standard,
-      data.trigger_event,
-      data.asis_owner,
-      data.agent_capability,
-      data.tools_systems,
-      data.exception_cases,
-      data.error_handling,
-      data.target_time,
-      data.target_time_unit,
-      data.confidentiality,
-      data.audit_log_required ? 1 : 0,
-      data.learning_mechanism,
-      data.kpi_metrics,
-      data.cost_benefit,
-      data.comments,
-      data.priority || '中',
+      toQueryParam(data.task_name),
+      toQueryParam(data.task_goal),
+      toQueryParam(data.automation_level),
+      toQueryParam(data.tobe_owner),
+      toQueryParam(data.input_info),
+      toQueryParam(data.output_info),
+      toQueryParam(data.data_standard),
+      toQueryParam(data.trigger_event),
+      toQueryParam(data.asis_owner),
+      toQueryParam(data.agent_capability),
+      toQueryParam(data.tools_systems),
+      toQueryParam(data.exception_cases),
+      toQueryParam(data.error_handling),
+      toQueryParam(data.target_time),
+      toQueryParam(data.target_time_unit),
+      toQueryParam(data.confidentiality),
+      data.audit_log_required === null || data.audit_log_required === undefined
+        ? null
+        : data.audit_log_required
+          ? 1
+          : 0,
+      toQueryParam(data.learning_mechanism),
+      toQueryParam(data.kpi_metrics),
+      toQueryParam(data.cost_benefit),
+      toQueryParam(data.comments),
+      toQueryParam(data.priority ?? '中'),
     ],
   );
   return id;
