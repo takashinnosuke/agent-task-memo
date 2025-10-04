@@ -10,10 +10,10 @@ export const baseTaskSchema = z.object({
   task_name: z.string().min(1, 'タスク名は必須です'),
   task_goal: z.string().min(1, '目的/ゴールは必須です'),
   automation_level: z.enum(['◎', '△', '×'], {
-    errorMap: () => ({ message: '自動化可能性を選択してください' }),
+    message: '自動化可能性を選択してください',
   }),
   tobe_owner: z.enum(['エージェント', '人間', '共同'], {
-    errorMap: () => ({ message: 'To-Be担当者を選択してください' }),
+    message: 'To-Be担当者を選択してください',
   }),
   input_info: z.string().min(1, '入力情報は必須です'),
   output_info: z.string().min(1, '出力情報は必須です'),
