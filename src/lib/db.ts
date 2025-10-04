@@ -5,6 +5,11 @@ export type QueryParam = string | number | boolean | null;
 
 const SQLITE_PATH = process.env.SQLITE_DB_PATH || 'dev.db';
 
+function toPostgresQuery(query: string): string {
+  let index = 0;
+  return query.replace(/\?/g, () => `$${++index}`);
+}
+
 const isPostgres = () => {
   if (process.env.FORCE_SQLITE === 'true') return false;
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
@@ -112,7 +117,8 @@ async function runPostgresMigrations() {
 export async function queryAll<T = unknown>(query: string, params: QueryParam[] = []): Promise<T[]> {
   if (isPostgres()) {
     await runPostgresMigrations();
-    const result = await sql.unsafe(query, params);
+    const text = toPostgresQuery(query);
+    const result = await sql.query(text, params);
     return result.rows as T[];
   }
   const db = getSqliteDb();
@@ -128,7 +134,8 @@ export async function queryGet<T = unknown>(query: string, params: QueryParam[] 
 export async function execute(query: string, params: QueryParam[] = []): Promise<void> {
   if (isPostgres()) {
     await runPostgresMigrations();
-    await sql.unsafe(query, params);
+    const text = toPostgresQuery(query);
+    await sql.query(text, params);
     return;
   }
   const db = getSqliteDb();
@@ -139,7 +146,8 @@ export async function execute(query: string, params: QueryParam[] = []): Promise
 export async function executeAndReturnId(query: string, params: QueryParam[] = []): Promise<number> {
   if (isPostgres()) {
     await runPostgresMigrations();
-    const result = await sql.unsafe(query + ' RETURNING id', params);
+    const text = toPostgresQuery(`${query} RETURNING id`);
+    const result = await sql.query(text, params);
     const [row] = result.rows as { id: number }[];
     return row?.id ?? 0;
   }
