@@ -19,7 +19,7 @@ const formSchema = baseTaskSchema.extend({
   kpi_metrics_tags: z.array(z.string()).default([]),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.input<typeof formSchema>;
 
 const steps = [
   {
@@ -120,9 +120,9 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
       setIsSaving(true);
       setSubmitError(null);
       const {
-        dependency_task_ids,
-        tools_systems_tags,
-        kpi_metrics_tags,
+        dependency_task_ids: dependencyTaskIds = [],
+        tools_systems_tags: toolsSystemsTags = [],
+        kpi_metrics_tags: kpiMetricsTags = [],
         ...taskPayload
       } = values;
 
@@ -131,8 +131,8 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...taskPayload,
-          tools_systems: tools_systems_tags.join(', '),
-          kpi_metrics: kpi_metrics_tags.join(', '),
+          tools_systems: toolsSystemsTags.join(', '),
+          kpi_metrics: kpiMetricsTags.join(', '),
         }),
       });
       if (!response.ok) {
@@ -140,11 +140,11 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
         throw new Error(message || 'タスクの作成に失敗しました');
       }
       const { id } = await response.json();
-      if (dependency_task_ids.length) {
+      if (dependencyTaskIds.length) {
         await fetch(`/api/tasks/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dependsOn: dependency_task_ids }),
+          body: JSON.stringify({ dependsOn: dependencyTaskIds }),
         });
       }
       form.reset();
@@ -305,7 +305,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 render={({ field }) => (
                   <select
                     multiple
-                    value={field.value.map(String)}
+                    value={(field.value ?? []).map(String)}
                     onChange={(event) => {
                       const selected = Array.from(event.target.selectedOptions).map((option) => Number(option.value));
                       field.onChange(selected);
@@ -341,7 +341,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 name="tools_systems_tags"
                 render={({ field }) => (
                   <input
-                    value={field.value.join(', ')}
+                    value={(field.value ?? []).join(', ')}
                     onChange={(event) => field.onChange(parseTags(event.target.value))}
                     placeholder="例: Slack, Notion"
                     className={clsx(baseInputClasses, 'mt-2')}
@@ -460,7 +460,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
                 name="kpi_metrics_tags"
                 render={({ field }) => (
                   <input
-                    value={field.value.join(', ')}
+                    value={(field.value ?? []).join(', ')}
                     onChange={(event) => field.onChange(parseTags(event.target.value))}
                     placeholder="例: 処理件数, 応答時間"
                     className={clsx(baseInputClasses, 'mt-2')}
