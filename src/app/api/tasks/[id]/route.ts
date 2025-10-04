@@ -3,7 +3,7 @@ import { baseTaskSchema, dependencySchema } from '@/utils/validation';
 import { deleteTask, getTask, updateTask, upsertDependencies } from '@/lib/tasks';
 
 type RouteParams = { id: string };
-type RouteContext = { params: RouteParams | Promise<RouteParams> };
+type RouteContext = { params: Promise<RouteParams> };
 
 async function parseTaskId(context: RouteContext) {
   const { id } = await context.params;
