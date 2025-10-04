@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { baseTaskSchema, dependencySchema } from '@/utils/validation';
 import { deleteTask, getTask, updateTask, upsertDependencies } from '@/lib/tasks';
 
+type RouteContext = { params: Promise<{ id: string }> };
+
+async function parseTaskId(context: RouteContext) {
+  const { id } = await context.params;
+  return Number(id);
+}
+
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: RouteContext,
 ) {
-  const taskId = Number(params.id);
+  const taskId = await parseTaskId(context);
   const task = await getTask(taskId);
   if (!task) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 });
@@ -16,10 +23,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  context: RouteContext,
 ) {
   try {
-    const taskId = Number(params.id);
+    const taskId = await parseTaskId(context);
     const body = await request.json();
     const { dependsOn, ...rest } = body;
     const parsed = baseTaskSchema.partial().parse(rest);
@@ -42,9 +49,9 @@ export async function PUT(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: RouteContext,
 ) {
-  const taskId = Number(params.id);
+  const taskId = await parseTaskId(context);
   await deleteTask(taskId);
   return NextResponse.json({ ok: true });
 }
