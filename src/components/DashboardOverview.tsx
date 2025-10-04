@@ -68,6 +68,7 @@ export function DashboardOverview() {
           data: counts,
           borderColor: '#6366f1',
           backgroundColor: 'rgba(99, 102, 241, 0.2)',
+          tension: 0.3,
         },
       ],
     };
@@ -161,7 +162,7 @@ export function DashboardOverview() {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-inner">
             <h3 className="text-sm font-semibold text-slate-600">週次登録数推移</h3>
-            <Line data={weeklyTrend} options={{ tension: 0.3 }} />
+            <Line data={weeklyTrend} options={{ elements: { line: { tension: 0.3 } } }} />
           </div>
           <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-inner">
             <h3 className="text-sm font-semibold text-slate-600">月次登録数推移</h3>
