@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Buffer } from 'node:buffer';
 import { listTasks } from '@/lib/tasks';
+import type { Task } from '@/types/task';
 import * as XLSX from 'xlsx';
 
-function buildCsv(rows: Record<string, unknown>[]): string {
+function buildCsv(rows: Task[]): string {
   if (!rows.length) return '';
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(rows[0] as Record<string, unknown>);
   const escape = (value: unknown) => {
     if (value === null || value === undefined) return '';
     const str = String(value).replace(/"/g, '""');
@@ -13,7 +14,8 @@ function buildCsv(rows: Record<string, unknown>[]): string {
   };
   const lines = [headers.join(',')];
   rows.forEach((row) => {
-    lines.push(headers.map((header) => escape(row[header])).join(','));
+    const record = row as Record<string, unknown>;
+    lines.push(headers.map((header) => escape(record[header])).join(','));
   });
   return lines.join('\n');
 }
