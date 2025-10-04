@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import clsx from 'classnames';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { baseTaskSchema, TaskInput } from '@/utils/validation';
+import { z } from 'zod';
+import { baseTaskSchema } from '@/utils/validation';
 import { Task } from '@/types/task';
 
 interface TaskFormWizardProps {
@@ -12,13 +13,13 @@ interface TaskFormWizardProps {
   onCreated: () => void;
 }
 
-type FormValues = TaskInput & {
-  trigger_event?: string | null;
-  dependency_task_ids: number[];
-  tools_systems_tags: string[];
-  kpi_metrics_tags: string[];
-  asis_owner?: string | null;
-};
+const formSchema = baseTaskSchema.extend({
+  dependency_task_ids: z.array(z.number().int()).default([]),
+  tools_systems_tags: z.array(z.string()).default([]),
+  kpi_metrics_tags: z.array(z.string()).default([]),
+});
+
+type FormValues = z.infer<typeof formSchema>;
 
 const steps = [
   {
@@ -93,7 +94,7 @@ export function TaskFormWizard({ tasks, onCreated }: TaskFormWizardProps) {
   };
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(baseTaskSchema),
+    resolver: zodResolver(formSchema),
     defaultValues,
   });
 
