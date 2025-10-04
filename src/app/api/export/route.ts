@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 
 function buildCsv(rows: Task[]): string {
   if (!rows.length) return '';
-  const headers = Object.keys(rows[0] as Record<string, unknown>);
+  const headers = Object.keys(rows[0]) as (keyof Task)[];
   const escape = (value: unknown) => {
     if (value === null || value === undefined) return '';
     const str = String(value).replace(/"/g, '""');
@@ -14,8 +14,7 @@ function buildCsv(rows: Task[]): string {
   };
   const lines = [headers.join(',')];
   rows.forEach((row) => {
-    const record = row as Record<string, unknown>;
-    lines.push(headers.map((header) => escape(record[header])).join(','));
+    lines.push(headers.map((header) => escape(row[header])).join(','));
   });
   return lines.join('\n');
 }
