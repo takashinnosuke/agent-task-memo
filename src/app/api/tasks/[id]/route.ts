@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { baseTaskSchema, dependencySchema } from '@/utils/validation';
 import { deleteTask, getTask, updateTask, upsertDependencies } from '@/lib/tasks';
 
-type RouteContext = { params: Promise<{ id: string }> };
+type RouteParams = { id: string };
+type RouteContext = { params: RouteParams | Promise<RouteParams> };
 
 async function parseTaskId(context: RouteContext) {
   const { id } = await context.params;
