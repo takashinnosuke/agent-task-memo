@@ -4,6 +4,65 @@ import { DashboardSummary, QuickMemo, Task, TaskDependency, TaskFilters } from '
 import type { TaskInput } from '@/utils/validation';
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
+  if (isSupabaseConfigured && supabase) {
+    const sortField = filters.sortField === 'id' ? 'id' : 'updated_at';
+    const sortOrder = filters.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const escapeValue = (value: string) =>
+      value
+        .replace(/\\/g, '\\\\')
+        .replace(/,/g, '\\,')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .replace(/\./g, '\\.');
+
+    let query = supabase.from('tasks').select('*');
+
+    if (filters.search) {
+      const trimmed = filters.search.trim();
+      if (trimmed) {
+        const term = `%${trimmed}%`;
+        query = query.or(
+          `task_name.ilike.${escapeValue(term)},task_goal.ilike.${escapeValue(term)}`,
+        );
+      }
+    }
+
+    if (filters.automationLevel && filters.automationLevel !== 'all') {
+      query = query.eq('automation_level', filters.automationLevel);
+    }
+
+    if (filters.priority && filters.priority !== 'all') {
+      query = query.eq('priority', filters.priority);
+    }
+
+    if (filters.owner) {
+      const owner = filters.owner.trim();
+      if (owner) {
+        const escapedOwner = escapeValue(owner);
+        query = query.or(
+          `tobe_owner.eq.${escapedOwner},asis_owner.eq.${escapedOwner},tobe_owner.is.null`,
+        );
+      }
+    }
+
+    if (filters.startDate) {
+      query = query.gte('updated_at', filters.startDate);
+    }
+
+    if (filters.endDate) {
+      query = query.lte('updated_at', filters.endDate);
+    }
+
+    const { data, error } = await query.order(sortField, { ascending: sortOrder === 'asc' });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ?? [];
+  }
+
   const conditions: string[] = [];
   const params: QueryParam[] = [];
 
@@ -43,10 +102,62 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
 }
 
 export async function getTask(id: number): Promise<Task | undefined> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ?? undefined;
+  }
+
   return queryGet<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
 }
 
 export async function createTask(data: TaskInput): Promise<number> {
+  if (isSupabaseConfigured && supabase) {
+    const payload = {
+      task_name: data.task_name,
+      task_goal: data.task_goal ?? null,
+      automation_level: data.automation_level ?? null,
+      tobe_owner: data.tobe_owner ?? null,
+      input_info: data.input_info ?? null,
+      output_info: data.output_info ?? null,
+      data_standard: data.data_standard ?? null,
+      trigger_event: data.trigger_event ?? null,
+      asis_owner: data.asis_owner ?? null,
+      agent_capability: data.agent_capability ?? null,
+      tools_systems: data.tools_systems ?? null,
+      exception_cases: data.exception_cases ?? null,
+      error_handling: data.error_handling ?? null,
+      target_time: data.target_time ?? null,
+      target_time_unit: data.target_time_unit ?? null,
+      confidentiality: data.confidentiality ?? null,
+      audit_log_required:
+        data.audit_log_required === null || data.audit_log_required === undefined
+          ? null
+          : Boolean(data.audit_log_required),
+      learning_mechanism: data.learning_mechanism ?? null,
+      kpi_metrics: data.kpi_metrics ?? null,
+      cost_benefit: data.cost_benefit ?? null,
+      comments: data.comments ?? null,
+      priority: data.priority ?? '中',
+    };
+
+    const { data: inserted, error } = await supabase
+      .from('tasks')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return inserted?.id ?? 0;
+  }
+
   const toQueryParam = (value: string | number | boolean | null | undefined): QueryParam => {
     if (value === undefined) return null;
     return value as QueryParam;
@@ -94,6 +205,36 @@ export async function createTask(data: TaskInput): Promise<number> {
 }
 
 export async function updateTask(id: number, data: Partial<Task>): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const updates = { ...data } as Partial<Task>;
+    delete updates.id;
+
+    if ('audit_log_required' in updates) {
+      updates.audit_log_required =
+        updates.audit_log_required === null || updates.audit_log_required === undefined
+          ? null
+          : Boolean(updates.audit_log_required);
+    }
+
+    const cleaned = Object.fromEntries(
+      Object.entries({ ...updates, updated_at: new Date().toISOString() }).filter(
+        ([, value]) => value !== undefined,
+      ),
+    );
+
+    if (!Object.keys(cleaned).length) {
+      return;
+    }
+
+    const { error } = await supabase.from('tasks').update(cleaned).eq('id', id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return;
+  }
+
   const fields: string[] = [];
   const params: QueryParam[] = [];
 
@@ -110,6 +251,31 @@ export async function updateTask(id: number, data: Partial<Task>): Promise<void>
 }
 
 export async function deleteTask(id: number): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error: dependencyError } = await supabase
+      .from('task_dependencies')
+      .delete()
+      .or(`task_id.eq.${id},depends_on_task_id.eq.${id}`);
+
+    if (dependencyError) {
+      throw new Error(dependencyError.message);
+    }
+
+    const { error: memoError } = await supabase.from('quick_memos').delete().eq('task_id', id);
+
+    if (memoError) {
+      throw new Error(memoError.message);
+    }
+
+    const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
+
+    if (taskError) {
+      throw new Error(taskError.message);
+    }
+
+    return;
+  }
+
   await withTransaction(async () => {
     await execute('DELETE FROM task_dependencies WHERE task_id = ? OR depends_on_task_id = ?', [id, id]);
     await execute('DELETE FROM quick_memos WHERE task_id = ?', [id]);
@@ -118,6 +284,36 @@ export async function deleteTask(id: number): Promise<void> {
 }
 
 export async function upsertDependencies(taskId: number, dependencyIds: number[]): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error: deleteError } = await supabase
+      .from('task_dependencies')
+      .delete()
+      .eq('task_id', taskId);
+
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
+
+    const rows = dependencyIds
+      .filter((dependsOnId) => dependsOnId !== taskId)
+      .map((dependsOnId) => ({
+        task_id: taskId,
+        depends_on_task_id: dependsOnId,
+      }));
+
+    if (!rows.length) {
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('task_dependencies').insert(rows);
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    return;
+  }
+
   await withTransaction(async () => {
     await execute('DELETE FROM task_dependencies WHERE task_id = ?', [taskId]);
     for (const dependsOnId of dependencyIds) {
@@ -131,6 +327,16 @@ export async function upsertDependencies(taskId: number, dependencyIds: number[]
 }
 
 export async function listDependencies(): Promise<TaskDependency[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from('task_dependencies').select('*');
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ?? [];
+  }
+
   return queryAll<TaskDependency>('SELECT * FROM task_dependencies');
 }
 
@@ -182,7 +388,7 @@ export async function listQuickMemos(): Promise<QuickMemo[]> {
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const tasks = await queryAll<Task>('SELECT * FROM tasks');
+  const tasks = isSupabaseConfigured && supabase ? await listTasks({ sortField: 'id', sortOrder: 'asc' }) : await queryAll<Task>('SELECT * FROM tasks');
 
   const automationLevelCounts: Record<string, number> = { '◎': 0, '△': 0, '×': 0 };
   const priorityCounts: Record<string, number> = { '高': 0, '中': 0, '低': 0 };
