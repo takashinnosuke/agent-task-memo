@@ -1,4 +1,5 @@
 import { execute, executeAndReturnId, queryAll, queryGet, withTransaction, QueryParam } from './db';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { DashboardSummary, QuickMemo, Task, TaskDependency, TaskFilters } from '@/types/task';
 import type { TaskInput } from '@/utils/validation';
 
@@ -133,7 +134,29 @@ export async function listDependencies(): Promise<TaskDependency[]> {
   return queryAll<TaskDependency>('SELECT * FROM task_dependencies');
 }
 
-export async function createQuickMemo(payload: { taskId?: number | null; taskName?: string; memoContent: string; }): Promise<number> {
+export async function createQuickMemo(payload: {
+  taskId?: number | null;
+  taskName?: string;
+  memoContent: string;
+}): Promise<number> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('quick_memos')
+      .insert({
+        task_id: payload.taskId ?? null,
+        task_name: payload.taskName ?? null,
+        memo_content: payload.memoContent,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data?.id ?? 0;
+  }
+
   return executeAndReturnId(
     `INSERT INTO quick_memos (task_id, task_name, memo_content) VALUES (?, ?, ?)`
     , [payload.taskId ?? null, payload.taskName ?? null, payload.memoContent],
@@ -141,6 +164,20 @@ export async function createQuickMemo(payload: { taskId?: number | null; taskNam
 }
 
 export async function listQuickMemos(): Promise<QuickMemo[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('quick_memos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ?? [];
+  }
+
   return queryAll<QuickMemo>('SELECT * FROM quick_memos ORDER BY created_at DESC LIMIT 50');
 }
 
