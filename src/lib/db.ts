@@ -1,21 +1,48 @@
 import Database from 'better-sqlite3';
 import { sql } from '@vercel/postgres';
 import { mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export type QueryParam = string | number | boolean | null;
 
 const SQLITE_PATH = resolveSqlitePath(process.env.SQLITE_DB_PATH || 'dev.db');
 
 function resolveSqlitePath(sqlitePath: string): string {
-  if (sqlitePath === ':memory:' || sqlitePath.startsWith('file:')) {
+  if (sqlitePath === ':memory:' || sqlitePath.startsWith('file::memory:')) {
     return sqlitePath;
   }
-  const resolved = path.isAbsolute(sqlitePath)
-    ? sqlitePath
-    : path.join(process.cwd(), sqlitePath);
+
+  let normalizedPath = sqlitePath;
+
+  if (normalizedPath.startsWith('~')) {
+    normalizedPath = path.join(os.homedir(), normalizedPath.slice(1));
+  }
+
+  if (normalizedPath.startsWith('file:')) {
+    ensureFileUriDirectory(normalizedPath);
+    return normalizedPath;
+  }
+
+  const resolved = path.isAbsolute(normalizedPath)
+    ? normalizedPath
+    : path.resolve(process.cwd(), normalizedPath);
   mkdirSync(path.dirname(resolved), { recursive: true });
   return resolved;
+}
+
+function ensureFileUriDirectory(uri: string) {
+  try {
+    const base = pathToFileURL(process.cwd() + path.sep);
+    const fileUrl = new URL(uri, base);
+    const fsPath = fileURLToPath(fileUrl);
+    if (fsPath) {
+      mkdirSync(path.dirname(fsPath), { recursive: true });
+    }
+  } catch {
+    // Ignore malformed URIs and let SQLite surface the error instead.
+  }
 }
 
 function toPostgresQuery(query: string): string {
