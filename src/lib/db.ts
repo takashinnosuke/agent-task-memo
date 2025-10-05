@@ -1,9 +1,22 @@
 import Database from 'better-sqlite3';
 import { sql } from '@vercel/postgres';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 export type QueryParam = string | number | boolean | null;
 
-const SQLITE_PATH = process.env.SQLITE_DB_PATH || 'dev.db';
+const SQLITE_PATH = resolveSqlitePath(process.env.SQLITE_DB_PATH || 'dev.db');
+
+function resolveSqlitePath(sqlitePath: string): string {
+  if (sqlitePath === ':memory:' || sqlitePath.startsWith('file:')) {
+    return sqlitePath;
+  }
+  const resolved = path.isAbsolute(sqlitePath)
+    ? sqlitePath
+    : path.join(process.cwd(), sqlitePath);
+  mkdirSync(path.dirname(resolved), { recursive: true });
+  return resolved;
+}
 
 function toPostgresQuery(query: string): string {
   let index = 0;
