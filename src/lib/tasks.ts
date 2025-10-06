@@ -1,7 +1,36 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import { execute, executeAndReturnId, queryAll, queryGet, withTransaction, QueryParam } from './db';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { DashboardSummary, QuickMemo, Task, TaskDependency, TaskFilters } from '@/types/task';
 import type { TaskInput } from '@/utils/validation';
+
+const supabaseFallbackPatterns = [
+  /schema cache/i,
+  /relation "?.+"? does not exist/i,
+  /could not find the table/i,
+];
+
+function shouldFallbackToLocalDb(error: PostgrestError | null): boolean {
+  if (!error?.message) {
+    return false;
+  }
+
+  return supabaseFallbackPatterns.some((pattern) => pattern.test(error.message));
+}
+
+function handleSupabaseError(error: PostgrestError | null, context: string): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (shouldFallbackToLocalDb(error)) {
+    console.warn(`Supabase ${context} failed: ${error.message}. Falling back to local database logic.`);
+    return true;
+  }
+
+  throw new Error(error.message);
+}
 
 export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
   if (isSupabaseConfigured && supabase) {
@@ -56,11 +85,9 @@ export async function listTasks(filters: TaskFilters = {}): Promise<Task[]> {
 
     const { data, error } = await query.order(sortField, { ascending: sortOrder === 'asc' });
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'listTasks')) {
+      return data ?? [];
     }
-
-    return data ?? [];
   }
 
   const conditions: string[] = [];
@@ -105,11 +132,9 @@ export async function getTask(id: number): Promise<Task | undefined> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle();
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'getTask')) {
+      return data ?? undefined;
     }
-
-    return data ?? undefined;
   }
 
   return queryGet<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
@@ -151,11 +176,9 @@ export async function createTask(data: TaskInput): Promise<number> {
       .select('id')
       .single();
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'createTask')) {
+      return inserted?.id ?? 0;
     }
-
-    return inserted?.id ?? 0;
   }
 
   const toQueryParam = (value: string | number | boolean | null | undefined): QueryParam => {
@@ -228,11 +251,9 @@ export async function updateTask(id: number, data: Partial<Task>): Promise<void>
 
     const { error } = await supabase.from('tasks').update(cleaned).eq('id', id);
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'updateTask')) {
+      return;
     }
-
-    return;
   }
 
   const fields: string[] = [];
@@ -252,28 +273,28 @@ export async function updateTask(id: number, data: Partial<Task>): Promise<void>
 
 export async function deleteTask(id: number): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const { error: dependencyError } = await supabase
+    const dependencyResult = await supabase
       .from('task_dependencies')
       .delete()
       .or(`task_id.eq.${id},depends_on_task_id.eq.${id}`);
 
-    if (dependencyError) {
-      throw new Error(dependencyError.message);
+    const dependencyFallback = handleSupabaseError(
+      dependencyResult.error,
+      'deleteTask (task_dependencies)',
+    );
+
+    if (!dependencyFallback) {
+      const memoResult = await supabase.from('quick_memos').delete().eq('task_id', id);
+      const memoFallback = handleSupabaseError(memoResult.error, 'deleteTask (quick_memos)');
+
+      if (!memoFallback) {
+        const taskResult = await supabase.from('tasks').delete().eq('id', id);
+
+        if (!handleSupabaseError(taskResult.error, 'deleteTask (tasks)')) {
+          return;
+        }
+      }
     }
-
-    const { error: memoError } = await supabase.from('quick_memos').delete().eq('task_id', id);
-
-    if (memoError) {
-      throw new Error(memoError.message);
-    }
-
-    const { error: taskError } = await supabase.from('tasks').delete().eq('id', id);
-
-    if (taskError) {
-      throw new Error(taskError.message);
-    }
-
-    return;
   }
 
   await withTransaction(async () => {
@@ -285,14 +306,12 @@ export async function deleteTask(id: number): Promise<void> {
 
 export async function upsertDependencies(taskId: number, dependencyIds: number[]): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const { error: deleteError } = await supabase
+    const deleteResult = await supabase
       .from('task_dependencies')
       .delete()
       .eq('task_id', taskId);
 
-    if (deleteError) {
-      throw new Error(deleteError.message);
-    }
+    const deleteFallback = handleSupabaseError(deleteResult.error, 'upsertDependencies (delete)');
 
     const rows = dependencyIds
       .filter((dependsOnId) => dependsOnId !== taskId)
@@ -301,17 +320,17 @@ export async function upsertDependencies(taskId: number, dependencyIds: number[]
         depends_on_task_id: dependsOnId,
       }));
 
-    if (!rows.length) {
-      return;
+    if (!deleteFallback) {
+      if (!rows.length) {
+        return;
+      }
+
+      const insertResult = await supabase.from('task_dependencies').insert(rows);
+
+      if (!handleSupabaseError(insertResult.error, 'upsertDependencies (insert)')) {
+        return;
+      }
     }
-
-    const { error: insertError } = await supabase.from('task_dependencies').insert(rows);
-
-    if (insertError) {
-      throw new Error(insertError.message);
-    }
-
-    return;
   }
 
   await withTransaction(async () => {
@@ -330,11 +349,9 @@ export async function listDependencies(): Promise<TaskDependency[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from('task_dependencies').select('*');
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'listDependencies')) {
+      return data ?? [];
     }
-
-    return data ?? [];
   }
 
   return queryAll<TaskDependency>('SELECT * FROM task_dependencies');
@@ -356,11 +373,9 @@ export async function createQuickMemo(payload: {
       .select('id')
       .single();
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'createQuickMemo')) {
+      return data?.id ?? 0;
     }
-
-    return data?.id ?? 0;
   }
 
   return executeAndReturnId(
@@ -377,11 +392,9 @@ export async function listQuickMemos(): Promise<QuickMemo[]> {
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (error) {
-      throw new Error(error.message);
+    if (!handleSupabaseError(error, 'listQuickMemos')) {
+      return data ?? [];
     }
-
-    return data ?? [];
   }
 
   return queryAll<QuickMemo>('SELECT * FROM quick_memos ORDER BY created_at DESC LIMIT 50');
